@@ -1,5 +1,5 @@
+import cloudscraper
 import requests
-
 from bs4 import BeautifulSoup
 from models import Company
 from database_utils import use_db, save_company_to_db
@@ -24,12 +24,14 @@ headers_initial = {
     "Sec-Fetch-Site": "same-origin"
 }
 
+BASE_URL = "https://www.bbb.org"
+
 headers_extra = {
     "Host": "www.bbb.org",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Encoding": "gzip, deflate, zstd",
     "DNT": "1",
     "Sec-GPC": "1",
     "Connection": "keep-alive",
@@ -41,28 +43,19 @@ headers_extra = {
     "Priority": "u=0, i"
 }
 
+scraper = cloudscraper.create_scraper(
+    interpreter="nodejs",
+    browser={
+        "browser": "chrome",
+        "platform": "ios",
+        "desktop": False,
+    }
+)
 
 
-def get_tokens():
-    response = requests.get(BASE_URL,headers=headers_extra, stream=True)
-    raw_response = response.raw._original_response
-    headers = raw_response.getheaders()  # returns list of (header, value)
 
-    for a in headers:
-        print(a)
-        print("\n")
+test_url = "https://www.bbb.org/us/ny/new-york/profile/restaurants/taam-tov-restaurant-inc-0121-170777"
 
-    # for cookie in response.cookies:
-    #     if cookie.name in ("__cf_bm", "CF_Authorization"):
-    #         auth_cookies[cookie.name] = cookie.value
-    # print(auth_cookies)
-    # headers_extra.update(auth_cookies)
-
-
-def test_token_page():
-    get_tokens()
-    response = requests.get("https://www.bbb.org/us/ny/new-york/profile/restaurants/cityspree-inc-0121-60114", headers=headers_extra)
-    print(response.status_code)
 
 def fetch_initial_info(param_text, page_number):
 
@@ -73,21 +66,16 @@ def fetch_initial_info(param_text, page_number):
     }
 
     FETCH_URL = BASE_URL + "/api/search"
-
-    #for testing
-    req = requests.Request("GET", FETCH_URL, headers=headers_initial, params=params)
+    #testing
+    req = requests.Request("GET", FETCH_URL, params=params, headers=headers_initial)
     prepared = req.prepare()
-        
-    print("Final URL:", prepared.url)
-    response = requests.get(FETCH_URL, headers=headers_initial, params=params)
+    print("Full link:", prepared.url) 
 
+    response = scraper.get(FETCH_URL, headers=headers_initial, params=params)
     if response.status_code // 100 == 2 :
         data = response.json()
         
         results = data["results"]
-
-        # testing
-        i = 0
 
         for item in results:
             company = Company(
@@ -102,9 +90,10 @@ def fetch_initial_info(param_text, page_number):
                 websiteUrl=None,
                 years=None,
                 description=None,
-                reportUrl=item["localReportUrl"]
+                reportUrl=item["localReportUrl"],
+                owners = None
             )
-            print(f"collected company id: {i}")
+            fetch_extra_info(company)
 
             use_db(
                 dbname="bbb",
@@ -112,72 +101,62 @@ def fetch_initial_info(param_text, page_number):
                 password="postgres",
                 callback=lambda cursor, conn: save_company_to_db(cursor, company)
             )
-            print(f"saved company id: {i}")
-            i+=1
-        #print(company)
-        #fetch_extra_info(company)
 
-
-        # item = results
-        # for item in results:
-        #     company = Company(
-        #         company_id=item["id"],
-        #         category=item["tobText"],
-        #         name=item["businessName"],
-        #         phone=item["phone"],
-        #         address=item["address"],
-        #         city=item["city"],
-        #         state=item["state"],
-        #         postalCode=item["postalcode"],
-        #         websiteUrl=None,
-        #         years=None,
-        #         description=None,
-        #         reportUrl=item["reportUrl"]
-        #     )
-        #     fetch_extra_info(company)
-        #     companies.append(company)
     else:
         print("Problem with response:", response.status_code)
         print(response.text)
 
 
-def fetch_extra_info(company: Company):
+def fetch_extra_info(company : Company):
+
+    if not company.reportUrl:
+        return
     
     FETCH_URL = BASE_URL + company.reportUrl
 
-    session = requests.Session()
-    session.headers.update(headers_extra)
-    response = session.get(FETCH_URL)
+    response = scraper.get(FETCH_URL, headers=headers_extra)
 
-    print(response.status_code)
-    print(response.text[:500])
-    if response.status_code // 2:
+
+    if response.status_code // 100 != 2:
         print(f"Failed to fetch extra info for {company.name}")
-        return {
-            "websiteUrl": None,
-            "years": None,
-            "description": None,
-        }
+        return
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Find the <a> tag that has "Visit Website" as its text
-    website_link_tag = soup.find("a", string=lambda text: text and "Visit Website" in text)
-
+    website_link_tag = soup.select_one("a:-soup-contains('Visit Website')")
     website_url = website_link_tag["href"] if website_link_tag else None
+    print(website_url)
 
-    # Placeholder for other values
-    years = None
-    description = None
+    years_tag = soup.select_one("p:-soup-contains('Years in Business')")
+    years = years_tag.text.split(":")[-1].strip() if years_tag else None
+    print(years)
 
-    return {
-        "websiteUrl": website_url,
-        "years": years,
-        "description": description,
-    }
+    description_heading = soup.find("h2", id="about")
+    description_body_div = description_heading.find_next_sibling("div", class_="bds-body") if description_heading else None
+    description = description_body_div.text.strip() if description_body_div else None
+
+    print(description)
+
+    possible_names = ["Owner", "Manager", "Director", "President"]
+
+    owners_tag = set()
+    # slow 
+    for dd in soup.select("dd"):
+        if any(name in dd.get_text() for name in possible_names):
+            owners_tag.add(dd)
+
+    owners = {}
+    for item in owners_tag:
+        owner, role = item.text.split(",")
+        owners[owner] = role
+    print(owners)
+
+    company.description = description
+    company.years = years
+    company.websiteUrl = website_url
+
+    
 
 
-test_token_page()
 
-# for i in range(15):
-#     fetch_initial_info("Restaurants",i+1)
+fetch_initial_info("Restaurants",1)

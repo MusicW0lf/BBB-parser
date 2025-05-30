@@ -24,7 +24,7 @@ def create_tables(cursor, _):
             address TEXT NOT NULL,
             city TEXT NOT NULL,
             state TEXT NOT NULL,
-            postalcode TEXT NOT NULL
+            postalcode TEXT NOT NULL,
             UNIQUE (address, city, state, postalcode)
         );
         """)
@@ -56,9 +56,13 @@ def create_tables(cursor, _):
     try:
         cursor.execute("""
         CREATE TABLE personnel (
-            id INT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
+            company_id VARCHAR,
             name VARCHAR,
-            position VARCHAR
+            position VARCHAR,
+            CONSTRAINT fk_company FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE
         );
         """)
         print("Table 'personnel' created.")

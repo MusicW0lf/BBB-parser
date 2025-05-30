@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 @dataclass
 class Company:
@@ -15,3 +15,4 @@ class Company:
     years: Optional[int]
     description: Optional[str]
     reportUrl: str
+    owners: Dict[str, str]

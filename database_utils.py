@@ -51,7 +51,6 @@ def save_company_to_db(cursor, company):
     
         address_id = cursor.fetchone()[0]
 
-        # Step 2: Insert the company
         cursor.execute("""
             INSERT INTO companies (id, name, phone, website, years, description, address_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -59,9 +58,17 @@ def save_company_to_db(cursor, company):
         """, (
             company.company_id,
             company.name,
-            company.phone,  # since phone is a TEXT[] array
+            company.phone,
             company.websiteUrl,
             company.years,
             company.description,
             address_id
         ))
+
+        if company.owners:
+            data = [(company.company_id, name, position) for name, position in company.owners.items()]
+            print(data)
+            cursor.executemany("""
+                INSERT INTO personnel (company_id, name, position)
+                VALUES (%s, %s, %s)
+            """, data)
