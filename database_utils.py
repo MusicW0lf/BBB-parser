@@ -40,7 +40,7 @@ def save_company_to_db(cursor, company):
     exists = cursor.fetchone()
 
     if exists:
-        print(f"Duplicate ID skipped: {company.company_id} - {company.name}")
+        print(f"Duplicate ID, tried to update: {company.company_id}")
 
     else:
         cursor.execute("""
@@ -65,10 +65,21 @@ def save_company_to_db(cursor, company):
             address_id
         ))
 
+        print(company.owners)
         if company.owners:
-            data = [(company.company_id, name, position) for name, position in company.owners.items()]
-            print(data)
-            cursor.executemany("""
-                INSERT INTO personnel (company_id, name, position)
-                VALUES (%s, %s, %s)
-            """, data)
+            for name, position in company.owners.items():
+                cursor.execute("""
+                    INSERT INTO personnel (name, position)
+                    VALUES (%s, %s)
+                    ON CONFLICT (name, position) DO UPDATE
+                        SET name = EXCLUDED.name
+                    RETURNING id;
+                """, (name, position))
+                
+                personnel_id = cursor.fetchone()[0]
+
+                cursor.execute("""
+                    INSERT INTO company_personnel (company_id, personnel_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (company_id, personnel_id) DO NOTHING;
+                """, (company.company_id, personnel_id))

@@ -57,12 +57,9 @@ def create_tables(cursor, _):
         cursor.execute("""
         CREATE TABLE personnel (
             id SERIAL PRIMARY KEY,
-            company_id VARCHAR,
             name VARCHAR,
             position VARCHAR,
-            CONSTRAINT fk_company FOREIGN KEY (company_id)
-                REFERENCES companies(id)
-                ON DELETE CASCADE
+            UNIQUE (name, position)
         );
         """)
         print("Table 'personnel' created.")
@@ -73,11 +70,9 @@ def create_tables(cursor, _):
     try:
         cursor.execute("""
         CREATE TABLE company_personnel (
-            company_id VARCHAR,
-            personnel_id INT,
-            PRIMARY KEY (company_id, personnel_id),
-            FOREIGN KEY (company_id) REFERENCES companies(id),
-            FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+            company_id VARCHAR REFERENCES companies(id) ON DELETE CASCADE,
+            personnel_id INT REFERENCES personnel(id) ON DELETE CASCADE,
+            PRIMARY KEY (company_id, personnel_id)
         );
         """)
         print("Table 'company_personnel' created.")

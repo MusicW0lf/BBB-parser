@@ -148,15 +148,15 @@ def fetch_extra_info(company : Company):
     owners = {}
     for item in owners_tag:
         owner, role = item.text.split(",")
-        owners[owner] = role
-    print(owners)
+        owners[owner.strip()] = role.strip()
 
     company.description = description
     company.years = years
     company.websiteUrl = website_url
+    company.owners = owners
 
     
 
 
 
-fetch_initial_info("Restaurants",1)
+fetch_initial_info("Restaurants",15)
