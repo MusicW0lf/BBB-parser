@@ -1,4 +1,5 @@
 import requests
+
 from bs4 import BeautifulSoup
 from models import Company
 from database_utils import use_db, save_company_to_db
